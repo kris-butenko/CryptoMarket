@@ -7,6 +7,7 @@
 
 import Foundation
 import Alamofire
+import Reachability
 
 enum AnyError: Error {
     case unknownError
@@ -28,11 +29,27 @@ final class NetworkManager : NSObject {
     
     let domainURL = "https://pro-api.coinmarketcap.com/v1"
     let headerAPIKey = HTTPHeader(name: "X-CMC_PRO_API_KEY", value: "c5052912-e0f0-4402-a928-100dcaad50db")
+    let headerAPIKey2 = HTTPHeader(name: "Accept", value: "application/json")
+
+    override init() {
+        super.init()
+        
+        // Initialise reachability
+        let reachability = try? Reachability()
+        // Register an observer for the network status
+        
+        do {
+            // Start the network status notifier
+            try reachability?.startNotifier()
+        } catch {
+            print("Unable to start notifier")
+        }
+    }
 
     
     private func requestWithPath(_ path:String, params:Dictionary<String, String>,  completion: @escaping (AnyError?, Dictionary<String, Any>?) -> Void) {
-        
-        let request = AF.request(domainURL + "/" + path, method: .get, parameters: params, encoder: URLEncodedFormParameterEncoder.default, headers: [headerAPIKey], interceptor: nil, requestModifier: nil)
+
+        let request = AF.request(domainURL + "/" + path, method: .get, parameters: params, encoder: URLEncodedFormParameterEncoder.default, headers: [headerAPIKey, headerAPIKey2], interceptor: nil, requestModifier: nil)
         
         let requestComplete: (HTTPURLResponse?, Result<String, AFError>) -> Void = { response, result in
 
@@ -67,7 +84,7 @@ final class NetworkManager : NSObject {
         }
     }
     
-    func getCurrenciesWithParameters(_ params:Dictionary<String, String>, completion: @escaping (AnyError?, Array<Currency>?) -> Void) {
+    private func getCurrenciesWithParameters(_ params:Dictionary<String, String>, completion: @escaping (AnyError?, Array<Currency>?) -> Void) {
         
         self.requestWithPath("cryptocurrency/listings/latest", params: params) { error, dictResult in
             
@@ -87,5 +104,9 @@ final class NetworkManager : NSObject {
         }
     }
     
+    func loadCurrencies(completion: @escaping (AnyError?, Array<Currency>?) -> Void) {
+        let params = ["start":"1","limit":"100", "convert":"USD"]
+        getCurrenciesWithParameters(params, completion: completion)
+    }
     
 }

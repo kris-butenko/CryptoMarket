@@ -6,36 +6,60 @@
 //
 
 import UIKit
+import Reachability
 
-class ViewController: UIViewController {
+class MainViewController: UIViewController {
 
     private var currencies : Array<Currency>?
     private var fullCurrenciesArray : Array<Currency>?
     @IBOutlet var collectionView : UICollectionView!
+    
+    private var selectedCurrency : Currency?
     
     override func viewDidLoad() {
         super.viewDidLoad()
         // Do any additional setup after loading the view.
         
         self.collectionView.refreshControl = UIRefreshControl()
-        self.collectionView.refreshControl?.addTarget(self, action: #selector(ViewController.refresh), for: .valueChanged)
+        self.collectionView.refreshControl?.addTarget(self, action: #selector(MainViewController.refresh), for: .valueChanged)
         
-        updateCurrenciesList()
+        let reachability = try? Reachability()
+        if let conn = reachability?.connection, conn != .unavailable {
+            loadCurrenciesList()
+        }
+        else {
+            updateCurrenciesList()
+        }
+        
+        DatabaseManager.sharedInstance.addObserver(self, forKeyPath: #keyPath(DatabaseManager.currencies), options: [.new, .old], context:nil)
     }
 
-    func updateCurrenciesList()
+    override func observeValue(forKeyPath keyPath: String?, of object: Any?, change: [NSKeyValueChangeKey : Any]?, context: UnsafeMutableRawPointer?) {
+            
+        if keyPath == #keyPath(DatabaseManager.currencies) {
+            if let newValue = change?[NSKeyValueChangeKey.newKey] as? Array<Currency> {
+              // print("Data changed: \(newValue)")
+                self.currencies = newValue
+                self.collectionView.reloadData()
+            }
+        }
+    }
+
+
+    func loadCurrenciesList()
     {
         self.collectionView.refreshControl?.isHidden = false
         self.collectionView.refreshControl?.beginRefreshing()
         
-       let params = ["start":"1","limit":"100", "convert":"USD"]
-        NetworkManager.sharedInstance.getCurrenciesWithParameters(params)
-        { [weak self] (error, currencies) in
+        NetworkManager.sharedInstance.loadCurrencies()
+            { [weak self] (error, currencies) in
             
             if let err = error {
                 self?.showAlertWithError(err)
             }
             else {
+                
+                DatabaseManager.sharedInstance.saveCurrensies(currencies!)
                 self?.currencies = currencies
                 self?.fullCurrenciesArray = currencies
                 self?.collectionView.reloadData()
@@ -43,6 +67,18 @@ class ViewController: UIViewController {
             }
         }
     }
+   
+    func updateCurrenciesList()
+    {
+        self.collectionView.refreshControl?.isHidden = false
+        self.collectionView.refreshControl?.beginRefreshing()
+        
+        self.currencies = DatabaseManager.sharedInstance.fetchedCurrensies()
+        self.fullCurrenciesArray = currencies
+        self.collectionView.reloadData()
+        self.collectionView.refreshControl?.endRefreshing()
+    }
+    
     
     func showAlertWithError(_ error:AnyError) {
         let message: String?
@@ -61,10 +97,18 @@ class ViewController: UIViewController {
     @IBAction func refresh() {
         updateCurrenciesList()
     }
+    
+    override func prepare(for segue: UIStoryboardSegue, sender: Any?) {
+        if segue.identifier == "CurrencyDetailSegueIdentifier" {
+            if let viewCtrl = segue.destination as? CurrencyDetailViewController {
+                viewCtrl.currency = self.selectedCurrency
+            }
+        }
+    }
 }
 
 
-extension ViewController: UICollectionViewDataSource, UICollectionViewDelegate {
+extension MainViewController: UICollectionViewDataSource, UICollectionViewDelegate {
     
     static let cellIdentifier = "CurrencyCellIdentifier"
     
@@ -75,7 +119,7 @@ extension ViewController: UICollectionViewDataSource, UICollectionViewDelegate {
     
     func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
         
-        let cell:CurrencyCell? = self.collectionView.dequeueReusableCell(withReuseIdentifier: ViewController.cellIdentifier, for: indexPath) as? CurrencyCell
+        let cell:CurrencyCell? = self.collectionView.dequeueReusableCell(withReuseIdentifier: MainViewController.cellIdentifier, for: indexPath) as? CurrencyCell
         
         if let currency = self.currencies?[indexPath.row] {
             cell?.currency = currency
@@ -86,11 +130,16 @@ extension ViewController: UICollectionViewDataSource, UICollectionViewDelegate {
     // MARK: - UICollectionViewDelegate
     public func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         
+        if let currency = self.currencies?[indexPath.row] {
+            self.selectedCurrency = currency
+            self.performSegue(withIdentifier: "CurrencyDetailSegueIdentifier", sender: nil)
+        }
+        
     }
 
 }
 
-extension ViewController: UISearchBarDelegate {
+extension MainViewController: UISearchBarDelegate {
     
     // MARK: - UISearchBarDelegate
     func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {

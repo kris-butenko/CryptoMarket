@@ -8,5 +8,6 @@ target 'CryptoMarket' do
   # Pods for CryptoMarket
 
 	pod 'Alamofire'
+	pod 'ReachabilitySwift'
 
 end
